@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Калькулятор лестницы</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Лестница">
+<meta name="theme-color" content="#14213d">
+<style>
+:root{--bg:#eef0f2;--card:#fff;--ink:#14213d;--mute:#5b6577;--line:#d9dde3;--accent:#c8873a;--accent-ink:#fff;--off:#9aa3b2}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1626;--card:#17233b;--ink:#eef1f6;--mute:#9aa6bb;--line:#2a3a58;--accent:#e0a050;--accent-ink:#14213d;--off:#5b6a86}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 96px)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 4px 8px}
+h1{font-size:20px;margin:0}
+button{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.opt{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.row{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center}
+.row.off{opacity:.45}
+.row .nm{font-weight:600}
+.row .sub{grid-column:2;color:var(--mute);font-size:13px}
+.row .sum{font-weight:700;text-align:right;min-width:70px}
+.row .q{grid-column:2/4;display:flex;gap:8px;align-items:center;justify-content:flex-start}
+input[type=number],input[type=password],input[type=text]{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;width:92px}
+input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
+.unit{color:var(--mute);font-size:14px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:#fff;padding:10px 14px calc(env(safe-area-inset-bottom) + 10px);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bar .t{font-size:13px;opacity:.75}
+.bar .v{font-size:26px;font-weight:800;color:#f2b665}
+.bar button{background:transparent;color:#fff;border-color:#ffffff55}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
+.panel h2{font-size:16px;margin:0 0 8px}
+.msg{color:var(--mute);font-size:13px;margin:6px 0}
+code{word-break:break-all;font-size:12px;background:var(--bg);padding:4px 6px;border-radius:6px;display:block;margin-top:6px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Калькулятор лестницы</h1>
+  <button id="lockBtn">Цены 🔒</button>
+</header>
+
+<div id="pinPanel" class="panel hide">
+  <h2>Введите PIN</h2>
+  <input id="pinIn" type="password" inputmode="numeric" autocomplete="off">
+  <button id="pinOk" class="primary">Открыть</button>
+  <div id="pinMsg" class="msg"></div>
+</div>
+
+<div id="editPanel" class="panel hide">
+  <h2>Режим цен</h2>
+  <div class="msg">Измените цены в строках ниже. Сохранённые цены действуют только на этом телефоне.</div>
+  <button id="savePrices" class="primary">Сохранить</button>
+  <button id="resetPrices">Сбросить к цене из файла</button>
+  <button id="exitEdit">Выйти</button>
+  <div class="msg" style="margin-top:12px">Новый PIN:</div>
+  <input id="newPin" type="text" inputmode="numeric" placeholder="новый PIN">
+  <button id="mkHash">Показать код</button>
+  <div id="hashOut" class="msg"></div>
+</div>
+
+<div class="opt"><span>Балясины без башмачков (×<span id="multTxt"></span>)</span><input type="checkbox" id="noShoe"></div>
+<div id="list"></div>
+
+<div class="bar">
+  <div><div class="t">Итого, работа без материалов</div><div class="v" id="total">$0</div></div>
+  <div><button id="copyBtn">Копировать</button> <button id="shareBtn">Отправить</button></div>
+</div>
+
+<script>
+/* ===== НАСТРОЙКИ. Меняйте здесь. ===== */
+const CONFIG = {
+  gapIn: 4,            // зазор между балясинами, дюймы
+  balWidthIn: 0.625,   // ширина балясины, дюймы (5/8)
+  noShoeMult: 2,       // множитель для установки без башмачков
+  pinHash: "ed946f65d2c785d90e827c5ffd879ce3b49c68d4c88013074176a7e73bc58bcf" // PIN по умолчанию: 2580. Замените.
+};
+// q: ключ количества. def: количество по умолчанию. auto: расчёт количества.
+const ITEMS = [
+  {id:"prep",  n:"Подготовка к работам",                       u:"фикс.",      p:400, q:"fixed", def:1},
+  {id:"carpet",n:"Демонтаж ковролина и подложки",              u:"ступень",    p:16,  q:"steps"},
+  {id:"dry",   n:"Демонтаж ГКЛ-перегородок",                   u:"пог. фут",   p:25,  q:"dry",  def:0},
+  {id:"base",  n:"Подготовка основания ступеней",              u:"ступень",    p:22,  q:"steps"},
+  {id:"str",   n:"Подготовка тетивы (левая + правая)",         u:"пог. фут",   p:12,  q:"str",  def:30},
+  {id:"tread", n:"Установка дубовых ступеней",                 u:"ступень",    p:85,  q:"steps"},
+  {id:"riser", n:"Установка дубовых подступенков",             u:"подступенок",p:38,  q:"riser"},
+  {id:"newel", n:"Установка дубовых newel posts",              u:"шт.",        p:175, q:"newel",def:3},
+  {id:"rail",  n:"Установка дубовых перил",                    u:"пог. фут",   p:28,  q:"rail", def:25},
+  {id:"bal",   n:"Установка металлических балясин",            u:"шт.",        p:18,  q:"bal",  shoe:true},
+  {id:"fit",   n:"Подгонка, крепление, удаление клея",         u:"балясина",   p:12,  q:"bal"},
+  {id:"wall",  n:"Ремонт стен и проёмов",                      u:"кв. фут",    p:4,   q:"wall", def:0},
+  {id:"paint", n:"Покраска подступенков, косоуров, молдингов", u:"пог. фут",   p:5,   q:"paint",def:0},
+  {id:"stain", n:"Финиш дуба: морилка, лак",                   u:"пог. фут",   p:8,   q:"stain",def:0},
+  {id:"haul",  n:"Вывоз мусора и уборка",                      u:"фикс.",      p:400, q:"fixed", def:1}
+];
+/* ===== КОНЕЦ НАСТРОЕК ===== */
+
+const $ = s => document.querySelector(s);
+const money = n => "$" + Math.round(n).toLocaleString("en-US");
+const store = {
+  get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},
+  del(k){try{localStorage.removeItem(k)}catch(e){}}
+};
+
+let editMode = false;
+let prices = {};          // id -> цена
+let on = {};              // id -> включено
+let qty = {steps:15, riser:null, bal:null}; // null = авто
+ITEMS.forEach(i=>{ prices[i.id]=i.p; on[i.id]=true; if(i.def!==undefined && i.q!=="fixed") qty[i.q]=i.def; });
+const saved = store.get("prices"); if(saved) Object.assign(prices, saved);
+
+function auto(q){
+  if(q==="riser") return qty.steps||0;
+  if(q==="bal")   return Math.ceil(((qty.rail||0)*12)/(CONFIG.gapIn+CONFIG.balWidthIn));
+  return 0;
+}
+function getQty(i){
+  if(i.q==="fixed") return 1;
+  const v = qty[i.q];
+  return (v===null||v===undefined) ? auto(i.q) : v;
+}
+function unitPrice(i){
+  return prices[i.id] * ((i.shoe && $("#noShoe").checked) ? CONFIG.noShoeMult : 1);
+}
+
+function render(){
+  const box = $("#list");
+  box.innerHTML = "";
+  ITEMS.forEach((i,idx)=>{
+    const row = document.createElement("div");
+    row.className = "row" + (on[i.id] ? "" : " off");
+    row.id = "r_"+i.id;
+    const up = unitPrice(i);
+    const q = getQty(i);
+    row.innerHTML =
+      `<input type="checkbox" ${on[i.id]?"checked":""} data-on="${i.id}">
+       <div class="nm">${idx+1}. ${i.n}</div>
+       <div class="sum" id="s_${i.id}">${money(up*q)}</div>
+       <div class="sub">${i.u} × ${editMode ? "" : money(up)}</div>
+       <div class="q"></div>`;
+    const sub = row.querySelector(".sub");
+    const qd = row.querySelector(".q");
+    if(editMode){
+      const pi = document.createElement("input");
+      pi.type="number"; pi.step="0.5"; pi.value=prices[i.id]; pi.dataset.price=i.id;
+      sub.appendChild(pi);
+    }
+    if(i.q!=="fixed"){
+      const qi = document.createElement("input");
+      qi.type="number"; qi.inputMode="decimal"; qi.min="0"; qi.step="any"; qi.dataset.q=i.q;
+      qi.value = (qty[i.q]===null||qty[i.q]===undefined) ? "" : qty[i.q];
+      if(i.q==="riser"||i.q==="bal") qi.placeholder = auto(i.q);
+      qd.appendChild(qi);
+      const un = document.createElement("span"); un.className="unit"; un.textContent=i.u; qd.appendChild(un);
+      if(i.q==="bal" && i.id==="bal"){
+        const hint=document.createElement("span"); hint.className="unit";
+        hint.textContent = qty.bal===null ? "(авто)" : "(вручную)"; qd.appendChild(hint);
+      }
+    }
+    box.appendChild(row);
+  });
+  update();
+}
+
+function update(){
+  let total = 0;
+  ITEMS.forEach(i=>{
+    const s = on[i.id] ? unitPrice(i)*getQty(i) : 0;
+    total += s;
+    const el = $("#s_"+i.id); if(el) el.textContent = money(on[i.id] ? unitPrice(i)*getQty(i) : 0);
+  });
+  $("#total").textContent = money(total);
+  // обновить подсказки авто-количества
+  document.querySelectorAll('input[data-q="riser"],input[data-q="bal"]').forEach(el=>{
+    el.placeholder = auto(el.dataset.q);
+  });
+  return total;
+}
+
+$("#list").addEventListener("input", e=>{
+  const t = e.target;
+  if(t.dataset.q){
+    qty[t.dataset.q] = t.value==="" ? (t.dataset.q==="riser"||t.dataset.q==="bal" ? null : 0) : parseFloat(t.value);
+    // обновить зависимые строки (риз./бал. дублируются в двух строках)
+    document.querySelectorAll(`input[data-q="${t.dataset.q}"]`).forEach(o=>{ if(o!==t) o.value=t.value; });
+    update();
+  }
+  if(t.dataset.price){ prices[t.dataset.price] = parseFloat(t.value)||0; update(); }
+});
+$("#list").addEventListener("change", e=>{
+  if(e.target.dataset.on){ on[e.target.dataset.on]=e.target.checked; $("#r_"+e.target.dataset.on).classList.toggle("off", !e.target.checked); update(); }
+});
+$("#noShoe").addEventListener("change", ()=>{ render(); });
+$("#multTxt").textContent = CONFIG.noShoeMult;
+
+/* ===== Итог в текст ===== */
+function buildText(){
+  const lines = ["Смета на лестницу (работа, без материалов)"];
+  ITEMS.forEach((i,idx)=>{
+    if(!on[i.id]) return;
+    const q = getQty(i); if(!q) return;
+    const up = unitPrice(i);
+    const label = i.q==="fixed" ? "" : `${q} ${i.u} × ${money(up)} = `;
+    lines.push(`${lines.length}. ${i.n}: ${label}${money(up*q)}`);
+  });
+  if($("#noShoe").checked) lines.push("Балясины: установка без башмачков.");
+  lines.push("ИТОГО: " + $("#total").textContent);
+  return lines.join("\n");
+}
+$("#copyBtn").onclick = async ()=>{
+  const t = buildText();
+  try{ await navigator.clipboard.writeText(t); $("#copyBtn").textContent="Скопировано"; }
+  catch(e){ prompt("Скопируйте текст:", t); }
+  setTimeout(()=>$("#copyBtn").textContent="Копировать",1500);
+};
+$("#shareBtn").onclick = async ()=>{
+  const t = buildText();
+  if(navigator.share){ try{ await navigator.share({title:"Смета на лестницу", text:t}); }catch(e){} }
+  else { try{ await navigator.clipboard.writeText(t); alert("Текст скопирован."); }catch(e){ prompt("Скопируйте текст:", t); } }
+};
+
+/* ===== Защита цен ===== */
+async function sha(s){
+  if(!(window.crypto && crypto.subtle)) throw new Error("no-crypto");
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+$("#lockBtn").onclick = ()=>{
+  if(editMode) return;
+  $("#pinPanel").classList.toggle("hide");
+  $("#pinMsg").textContent=""; $("#pinIn").value=""; $("#pinIn").focus();
+};
+$("#pinOk").onclick = async ()=>{
+  try{
+    if(await sha($("#pinIn").value) === CONFIG.pinHash){
+      editMode = true;
+      $("#pinPanel").classList.add("hide"); $("#editPanel").classList.remove("hide");
+      $("#lockBtn").textContent="Цены 🔓"; render();
+    } else $("#pinMsg").textContent = "Неверный PIN.";
+  }catch(e){ $("#pinMsg").textContent = "Браузер не поддерживает проверку PIN."; }
+};
+function exitEdit(){
+  editMode=false; $("#editPanel").classList.add("hide"); $("#lockBtn").textContent="Цены 🔒"; render();
+}
+$("#exitEdit").onclick = exitEdit;
+$("#savePrices").onclick = ()=>{ store.set("prices", prices); exitEdit(); };
+$("#resetPrices").onclick = ()=>{
+  store.del("prices"); ITEMS.forEach(i=>prices[i.id]=i.p); exitEdit();
+};
+$("#mkHash").onclick = async ()=>{
+  const p = $("#newPin").value.trim();
+  if(p.length<4){ $("#hashOut").textContent="PIN: минимум 4 цифры."; return; }
+  try{
+    const h = await sha(p);
+    $("#hashOut").innerHTML = 'Вставьте этот код в строку pinHash в файле index.html:<code>'+h+'</code>';
+  }catch(e){ $("#hashOut").textContent="Браузер не поддерживает расчёт кода."; }
+};
+
+/* ===== Автономная работа ===== */
+if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
+
+render();
+</script>
+</body>
+</html>
